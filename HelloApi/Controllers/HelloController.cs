@@ -1,5 +1,5 @@
-﻿using HelloApi.Services;
-using Microsoft.AspNetCore.Http.HttpResults;
+﻿using HelloApi.DTOs;
+using HelloApi.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HelloApi.Controllers
@@ -17,6 +17,6 @@ namespace HelloApi.Controllers
 
 
         [HttpGet]
-        public IActionResult GetMessage() => Ok( new { message = _messageService.GetMessage() } );
+        public IActionResult GetMessage() => Ok(new HelloMessageResponse(_messageService.GetMessage()));
     }
 }
