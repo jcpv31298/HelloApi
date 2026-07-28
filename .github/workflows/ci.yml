@@ -21,7 +21,7 @@ jobs:
            dotnet-version: '8.0.x'
 
        - name: Restore dependencies
-         run: dotnet Restore HelloApi.sln
+         run: dotnet restore HelloApi.sln
 
        - name: Build
          run: dotnet build HelloApi.sln --configuration Release --no-restore
