@@ -21,10 +21,10 @@ jobs:
            dotnet-version: '8.0.x'
 
        - name: Restore dependencies
-         run: dotnet Restore
+         run: dotnet Restore HelloApi.sln
 
        - name: Build
-         run: dotnet build --configuration Release --no-restore
+         run: dotnet build HelloApi.sln --configuration Release --no-restore
 
        - name: Run Tests
-         run: dotnet test --configuration Release --no-build --verbosity normal
+         run: dotnet test HelloApi.sln --configuration Release --no-build --verbosity normal
