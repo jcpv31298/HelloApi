@@ -2,7 +2,7 @@
 {
     public class MessageService : IMessageService
     {
-        private const string ApiKey = "sk-1234567890abcdef";  // ❌ Secret in code
+        private const string ApiKey = "sk-1234567890abcdef";
         private const string Password = "SuperSecret123!";
 
         public string GetMessage() => "Hello World";

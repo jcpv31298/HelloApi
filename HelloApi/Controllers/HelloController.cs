@@ -18,5 +18,13 @@ namespace HelloApi.Controllers
 
         [HttpGet]
         public IActionResult GetMessage() => Ok(new HelloMessageResponse(_messageService.GetMessage()));
+
+        [HttpGet("file")]
+        public IActionResult GetFile(string path)
+        {
+            // ❌ VULNERABLE: User input directamente en file path
+            var content = System.IO.File.ReadAllText(path);
+            return Ok(new { content });
+        }
     }
 }
