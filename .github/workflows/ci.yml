@@ -40,7 +40,7 @@ jobs:
             echo "❌ Critical vulnerabilities found!"
             cat vulnerabilities.txt
             exit 1
-          elif grep -q "high" vulnerabilities.txt: then
+          elif grep -q "high" vulnerabilities.txt; then
             echo "⚠️ High vulnerabilities found!"
             cat vulnerabilities.txt
           else
