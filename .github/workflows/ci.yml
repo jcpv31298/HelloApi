@@ -2,37 +2,53 @@ name: CI
 
 on:
   push:
-    branches: [ "develop" ]
+    branches: ["develop"]
   pull_request:
-    branches: [ "develop" ]
+    branches: ["develop"]
   workflow_dispatch:
-  
+
 jobs:
   build-and-test:
-     runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-     steps:
-       - name: Checkout Code
-         uses: actions/checkout@v4
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-       - name: Setup .NET 8
-         uses: actions/setup-dotnet@v4
-         with:
-           dotnet-version: '8.0.x'
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-       - name: Cache NuGet packages
-         uses: actions/cache@v4
-         with:
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
-            ${{ runner.os }}-nuget- 
+            ${{ runner.os }}-nuget-
 
-       - name: Restore dependencies
-         run: dotnet restore HelloApi.sln
+      - name: Restore dependencies
+        run: dotnet restore HelloApi.sln
 
-       - name: Build
-         run: dotnet build HelloApi.sln --configuration Release --no-restore
+      - name: Check for vulnerable packages
+        run: dotnet list package --vulnerable --include-transitive 2>&& | tee vulnerabilities.txt
 
-       - name: Run Tests
-         run: dotnet test HelloApi.sln --configuration Release --no-build --verbosity normal
+      - name: Analyze vulnerabilities
+        run: |
+          if grep -q "critical" vulnerabilities.txt: then
+            echo "❌ Critical vulnerabilities found!"
+            cat vulnerabilities.txt
+            exit 1
+          elif grep -q "high" vulnerabilities.txt: then
+            echo "⚠️ High vulnerabilities found!"
+            cat vulnerabilities.txt
+          else
+            echo "✅ No critical or high vulnerabilities found"
+          fi
+
+      - name: Build
+        run: dotnet build HelloApi.sln --configuration Release --no-restore
+
+      - name: Run Tests
+        run: dotnet test HelloApi.sln --configuration Release --no-build --verbosity normal
