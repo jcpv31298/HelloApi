@@ -32,7 +32,7 @@ jobs:
         run: dotnet restore HelloApi.sln
 
       - name: Check for vulnerable packages
-        run: dotnet list package --vulnerable --include-transitive 2>&& | tee vulnerabilities.txt
+        run: dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerabilities.txt
 
       - name: Analyze vulnerabilities
         run: |
