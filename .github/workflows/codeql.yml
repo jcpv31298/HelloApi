@@ -22,21 +22,206 @@ jobs:
         language: [csharp]
 
     steps:
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PASO 1: Descargar el código del repositorio
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PASO 2: Inicializar CodeQL con queries extendidas
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
 
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PASO 3: Compilar el código automáticamente
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PASO 4: Analizar código con CodeQL
+      # IMPORTANTE: NO sube automáticamente (upload: False)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       - name: Perform CodeQL Analysis
+        id: analyze
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-          upload: true
-          fail_on_severity: high
+          output: sarif-results
+          upload: false
+
+      - name: Check CodeQL results and fail if vulnerabilities found
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔍 SECURITY SCAN: Checking for CodeQL vulnerabilities..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+
+          # ────────────────────────────────────────────────────────
+          # 1. Buscar archivos SARIF (resultados de CodeQL)
+          # ────────────────────────────────────────────────────────
+          SARIF_FILES=$(find sarif-results -name "*.sarif" -type f 2>/dev/null || echo "")
+
+          if [ -z "$SARIF_FILES" ]; then
+            echo "⚠️ No SARIF files found in sarif-results/"
+            echo "This might indicate CodeQL analysis didn't run properly."
+            exit 0
+          fi
+
+          echo "📄 Found SARIF files:"
+          for files in $SARIF_FILES; do
+            echo "• $file"
+          done
+          echo ""
+
+          # ────────────────────────────────────────────────────────
+          # 2. Instalar jq (herramienta para parsear JSON)
+          # ────────────────────────────────────────────────────────
+          echo "🔧 Installing jq for JSON parsing..."
+          sudo apt-get update -qq > /dev/null 2>&1
+          sudo apt-get install -y jq > /dev/null 2>&1
+          echo "   ✓ jq installed successfully"
+          echo ""
+
+          # ────────────────────────────────────────────────────────
+          # 3. Inicializar contadores de vulnerabilidades
+          # ────────────────────────────────────────────────────────
+          TOTAL_CRITICAL=0
+          TOTAL_HIGH=0
+          TOTAL_MEDIUM=0
+          TOTAL_LOW=0
+
+          # ────────────────────────────────────────────────────────
+          # 4. Procesar cada archivo SARIF
+          # ────────────────────────────────────────────────────────
+          for file in $SARIF_FILES; do
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📊 Analyzing: $file"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # Contar vulnerabilidades por nivel
+            # En SARIF: "error" = High/Critical, "warning" = Medium, "note" = Low
+            ERRORS=$(jq '[.runs[].results[] | select(.level == "error")] | length' "$file" 2>/dev/null || echo "0")
+            WARNINGS=$(jq '[.runs[].results[] | select(.level == "warning")] | length' "$file" 2>/dev/null || echo "0")
+            NOTES=$(jq '[.runs[].results[] | select(.level == "note")] | length' "$file" 2>/dev/null || echo "0")
+            
+            echo "  📈 Summary for this file:"
+            echo "     • Errors (High/Critical): $ERRORS"
+            echo "     • Warnings (Medium):      $WARNINGS"
+            echo "     • Notes (Low):            $NOTES"
+            
+            # ────────────────────────────────────────────────────
+            # 5. Listar vulnerabilidades encontradas con detalles
+            # ────────────────────────────────────────────────────
+            if [ "$ERRORS" -gt 0 ] || [ "$WARNINGS" -gt 0 ]; then
+              echo ""
+              echo "  🚨 Vulnerabilities found:"
+              echo ""
+              
+              # Extraer y formatear cada vulnerabilidad
+              jq -r '.runs[].results[] | 
+                "     [\(.level | ascii_upcase)] \(.message.text)\n" +
+                "     📍 Location: \(.locations[0].physicalLocation.artifactLocation.uri // "unknown"):\(.locations[0].physicalLocation.region.startLine // "?")\n" +
+                "     🔗 Rule: \(.ruleId // "unknown")\n"
+              ' "$file" 2>/dev/null || true
+            fi
+            
+            # Acumular totales
+            TOTAL_CRITICAL=$((TOTAL_CRITICAL + ERRORS))
+            TOTAL_HIGH=$((TOTAL_HIGH + ERRORS))
+            TOTAL_MEDIUM=$((TOTAL_MEDIUM + WARNINGS))
+            TOTAL_LOW=$((TOTAL_LOW + NOTES))
+            
+            echo ""
+          done
+
+          # ────────────────────────────────────────────────────────
+          # 6. Mostrar resumen final
+          # ────────────────────────────────────────────────────────
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 FINAL SUMMARY"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "  Total vulnerabilities found:"
+          echo "    🔴 Critical/High:  $TOTAL_HIGH"
+          echo "    🟠 Medium:         $TOTAL_MEDIUM"
+          echo "    🟡 Low:            $TOTAL_LOW"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          # ────────────────────────────────────────────────────────
+          # 7. DECISIÓN: Fallar o pasar según política de seguridad
+          # ────────────────────────────────────────────────────────
+
+          # POLÍTICA: Bloquear si hay vulnerabilidades High o Critical
+          if [ "$TOTAL_HIGH" -gt 0 ]; then
+            echo ""
+            echo "❌ ════════════════════════════════════════════════════"
+            echo "❌  BUILD FAILED DUE TO SECURITY VULNERABILITIES"
+            echo "❌ ════════════════════════════════════════════════════"
+            echo ""
+            echo "   Found $TOTAL_HIGH High/Critical severity vulnerabilities!"
+            echo ""
+            echo "   🚫 This code cannot be merged until these issues are fixed."
+            echo ""
+            echo "   📋 Next steps:"
+            echo "      1. Review the vulnerabilities listed above"
+            echo "      2. Fix the security issues in your code"
+            echo "      3. Commit and push the fixes"
+            echo "      4. View detailed reports in: Security → Code scanning"
+            echo ""
+            echo "❌ ════════════════════════════════════════════════════"
+            exit 1
+          fi
+
+          # WARNING: Alertar si hay Medium pero no bloquear
+          if [ "$TOTAL_MEDIUM" -gt 0 ]; then
+            echo ""
+            echo "⚠️  ════════════════════════════════════════════════════"
+            echo "⚠️   WARNING: Medium severity vulnerabilities detected"
+            echo "⚠️  ════════════════════════════════════════════════════"
+            echo ""
+            echo "   Found $TOTAL_MEDIUM Medium severity vulnerabilities."
+            echo ""
+            echo "   While not blocking this build, consider fixing these issues:"
+            echo "   • They may escalate to High severity with code changes"
+            echo "   • They increase the attack surface of your application"
+            echo ""
+            echo "   📋 Review them in: Security → Code scanning"
+            echo ""
+          fi
+
+          # SUCCESS: Todo limpio
+          if [ "$TOTAL_HIGH" -eq 0 ] && [ "$TOTAL_MEDIUM" -eq 0 ] && [ "$TOTAL_LOW" -eq 0 ]; then
+            echo ""
+            echo "✅ ════════════════════════════════════════════════════"
+            echo "✅  SECURITY SCAN PASSED"
+            echo "✅ ════════════════════════════════════════════════════"
+            echo ""
+            echo "   No security vulnerabilities detected! 🎉"
+            echo ""
+          else
+            echo ""
+            echo "✅ ════════════════════════════════════════════════════"
+            echo "✅  BUILD PASSED (with warnings)"
+            echo "✅ ════════════════════════════════════════════════════"
+            echo ""
+            echo "   No Critical or High severity vulnerabilities found."
+            echo "   Review Medium/Low issues when possible."
+            echo ""
+          fi
+
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      # PASO 6: Subir resultados a GitHub Security
+      # Se ejecuta SIEMPRE (incluso si el paso anterior falló)
+      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-results
