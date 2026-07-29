@@ -36,7 +36,7 @@ jobs:
 
       - name: Analyze vulnerabilities
         run: |
-          if grep -q "critical" vulnerabilities.txt: then
+          if grep -q "critical" vulnerabilities.txt; then
             echo "❌ Critical vulnerabilities found!"
             cat vulnerabilities.txt
             exit 1
